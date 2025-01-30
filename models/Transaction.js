@@ -9,6 +9,11 @@ const TransactionSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now }, // Transaction date
     reference: { type: String, required: true }, // Payment reference
     merchantName: { type: String, required: true }, // Merchant name
+    merchantAccountNumber: { type: String, required: true }, // Merchant account number
+    status: { type: String, enum: ['pending', 'completed', 'failed'], default: 'pending' }, // Transaction status
+    transactionId: { type: String }, // Transaction ID from Jenga API
+}, {
+    timestamps: true // Automatically add createdAt and updatedAt fields
 });
 
 module.exports = mongoose.model('Transaction', TransactionSchema);
