@@ -1,511 +1,772 @@
 // const express = require('express');
-// const Transaction = require('../models/Transaction');
-// const User = require('../models/User');
+// const fs = require('fs');
 // const jwt = require('jsonwebtoken');
 // const axios = require('axios');
-// const crypto = require('crypto');
-// const fs = require('fs');
-// const path = require('path');
-// require('dotenv').config();
+// const dotenv = require('dotenv');
+// // const { getAccessToken } = require('../generateToken');
+// const Transaction = require('../models/Transaction');
+// const User = require('../models/User');
+
+// dotenv.config();
 
 // const router = express.Router();
 
-// // Environment variables
 // const {
-//     API_KEY,
-//     MERCHANT_CODE,
-//     CONSUMER_SECRET,
-//     JENGA_API_URL,
-//     JWT_SECRET,
-//     PRIVATE_KEY_PATH,
+//     MERCHANT_ACCOUNT_NUMBER,
+//     MERCHANT_NAME,
 //     CALLBACK_URL,
 // } = process.env;
 
-// // Enhanced Signature Generation Function
-// const generateSignature = (privateKeyPath, message) => {
-//     try {
-//         const resolvedKeyPath = path.resolve(privateKeyPath);
-//         if (!fs.existsSync(resolvedKeyPath)) {
-//             throw new Error(`Private key not found at ${resolvedKeyPath}`);
-//         }
+// const API_KEY = "Y5e2cRT3sQ/4iQg+TO69mY3CZ9QMNM2n8vzKHAsbvNdl9zXYCBItLGcHECjXhrjmxJLp+0pJCNnck8+abpw2RA==";
+// const MERCHANT_CODE = "5685692761";
+// const CONSUMER_SECRET = "9neJ1NL36uN4MGU3fOt4pv834haTCp";
 
-//         const privateKey = fs.readFileSync(resolvedKeyPath, 'utf8');
-//         const sign = crypto.createSign('RSA-SHA256');
-//         sign.update(message, 'utf8'); // Ensure UTF-8 encoding
-//         sign.end();
-//         return sign.sign(privateKey, 'base64'); // Return base64 encoded signature
-//     } catch (error) {
-//         console.error('Signature Generation Error:', error);
-//         throw new Error(`Failed to generate signature: ${error.message}`);
-//     }
-// };
-
-// // Validation Middleware
-// const validateFields = (requiredFields) => {
-//     return (req, res, next) => {
-//         const missingFields = requiredFields.filter(field => !req.body[field]);
-//         if (missingFields.length > 0) {
-//             return res.status(400).json({
-//                 message: `Missing required fields: ${missingFields.join(', ')}`
-//             });
-//         }
-//         next();
-//     };
-// };
-
-// // Enhanced Token Authentication Middleware
-// const authenticateToken = (req, res, next) => {
-//     const authHeader = req.headers['authorization'];
-//     const token = authHeader && authHeader.split(' ')[1];
-
-//     if (!token) {
-//         return res.status(401).json({ 
-//             message: 'No authentication token provided',
-//             error: 'Unauthorized' 
-//         });
-//     }
-
-//     try {
-//         const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
-//         if (!decoded.id) {
-//             return res.status(403).json({ 
-//                 message: 'Invalid token structure',
-//                 error: 'Forbidden' 
-//             });
-//         }
-
-//         req.userId = decoded.id;
-//         req.user = decoded;
-//         next();
-//     } catch (error) {
-//         console.error('Token Verification Error:', error);
-//         if (error.name === 'TokenExpiredError') {
-//             return res.status(401).json({ 
-//                 message: 'Token expired',
-//                 error: 'Please login again' 
-//             });
-//         }
-//         return res.status(403).json({ 
-//             message: 'Invalid token',
-//             error: error.message 
-//         });
-//     }
-// };
-
-// // Get Bearer Token from Jenga API with Enhanced Error Handling
-// const getJengaBearerToken = async () => {
+// async function getAccessToken() {
 //     try {
 //         const response = await axios.post(
-//             `${JENGA_API_URL}/authentication/api/v3/authenticate/merchant`,
+//             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
 //             {
 //                 merchantCode: MERCHANT_CODE,
 //                 consumerSecret: CONSUMER_SECRET
 //             },
 //             {
 //                 headers: {
-//                     'Content-Type': 'application/json',
-//                     'Api-Key': API_KEY
-//                 },
-//                 timeout: 10000
+//                     "Content-Type": "application/json",
+//                     "Api-Key": API_KEY
+//                 }
 //             }
 //         );
-
 //         return response.data.accessToken;
 //     } catch (error) {
-//         console.error('Jenga Token Generation Error:', {
-//             status: error.response?.status,
-//             data: error.response?.data,
-//             message: error.message
-//         });
-        
-//         throw new Error('Failed to generate Jenga Bearer Token');
+//         throw new Error("Error getting access token: " + (error.response?.data || error.message));
 //     }
+// }
+
+// const validateFields = (requiredFields) => (req, res, next) => {
+//     const missingFields = requiredFields.filter(field => !req.body[field]);
+//     if (missingFields.length > 0) {
+//         return res.status(400).json({ message: `Missing required fields: ${missingFields.join(', ')}` });
+//     }
+//     next();
 // };
 
-// // Perform STK Push with Signature and Comprehensive Error Handling
-// const performSTKPush = async (accessToken, { phoneNumber, amount, reference }) => {
-//     // Construct payload for STK Push
-//     const payload = {
-//         callbackUrl: CALLBACK_URL,
-//         details: {
-//             msisdn: phoneNumber.replace('+', '').replace(/^0/, '254'),
-//             paymentAmount: parseFloat(amount)
-//         },
-//         payment: {
-//             paymentReference: reference,
-//             paymentCurrency: 'KES',
-//             channel: 'MOBILE',
-//             service: 'MPESA',
-//             provider: 'JENGA'
-//         }
-//     };
-
+// const performSTKPush = async ({ phoneNumber, amount, accountReference }) => {
 //     try {
-//         // Generate signature for the payload using actual values
-//         const signatureMessage = `${MERCHANT_CODE}${amount}${reference}`;
-        
-//         const signature = generateSignature(PRIVATE_KEY_PATH, signatureMessage);
-
-//         // Log payload and headers for debugging purposes
-//         console.log('STK Push Payload:', JSON.stringify(payload, null, 2));
-        
-//         const headers = {
-//             'Authorization': `Bearer ${accessToken}`,
-//             'Content-Type': 'application/json',
-//             'Api-Key': API_KEY,
-//             'Signature': signature
-//         };
-        
-//         console.log('STK Push Headers:', headers);
-
-//         // Make the STK Push request to Jenga API
+//         const accessToken = await getAccessToken();
 //         const response = await axios.post(
-//             `${JENGA_API_URL}/v3-apis/payment-api/v3.0/stkussdpush/initiate`,
-//             payload,
-//             { headers }
+//             "https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate",
+//             {
+//                 merchant: {
+//                     accountNumber: MERCHANT_ACCOUNT_NUMBER,
+//                     countryCode: 'KE',
+//                     name: MERCHANT_NAME
+//                 },
+//                 payment: {
+//                     ref: accountReference,
+//                     amount: amount.toString(),
+//                     currency: 'KES',
+//                     telco: 'Safaricom',
+//                     mobileNumber: phoneNumber,
+//                     date: new Date().toISOString().split('T')[0],
+//                     callBackUrl: CALLBACK_URL,
+//                     pushType: 'USSD'
+//                 }
+//             },
+//             { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, timeout: 15000 }
 //         );
-
 //         return response.data;
 //     } catch (error) {
-//         console.error('STK Push Error:', {
-//             status: error.response?.status || 500,
-//             data: error.response?.data || {},
-//             message: error.message || "Request failed"
-//         });
-
-//         throw new Error(`STK Push failed with status code ${error.response?.status || 500}: ${error.message}`);
+//         throw new Error('STK Push failed: ' + (error.response?.data || error.message));
 //     }
 // };
 
-// // STK Push Route
-// router.post(
-//     '/stk-push', 
-//     authenticateToken,
-//     validateFields(['amount', 'phoneNumber', 'reference', 'merchantName']),
-//     async (req, res) => {
+// router.post('/stk-push', validateFields(['amount', 'phoneNumber', 'reference', 'merchantName']), async (req, res) => {
+//     try {
 //         const { amount, phoneNumber, reference, merchantName } = req.body;
+//         const user = await User.findById(req.userId);
+//         if (!user || user.hasSubscribed) return res.status(400).json({ message: 'Invalid request' });
 
-//         try {
-//             const user = await User.findById(req.userId);
-//             if (!user) {
-//                 return res.status(404).json({ message: 'User not found' });
-//             }
+//         const transaction = new Transaction({
+//             userId: req.userId,
+//             amount,
+//             currency: 'KES',
+//             telco: 'Safaricom',
+//             mobileNumber: phoneNumber,
+//             reference,
+//             merchantName,
+//             merchantAccountNumber: MERCHANT_ACCOUNT_NUMBER,
+//             status: 'pending',
+//         });
+//         await transaction.save();
 
-//             if (user.hasSubscribed) {
-//                 return res.status(400).json({ message: 'User has already subscribed' });
-//             }
-
-//             const transaction = new Transaction({
-//                 userId: req.userId,
-//                 amount,
-//                 currency: 'KES',
-//                 telco: 'Safaricom',
-//                 mobileNumber: phoneNumber,
-//                 reference,
-//                 merchantName,
-//             });
-            
-//             await transaction.save();
-
-//             const bearerToken = await getJengaBearerToken();
-            
-//             // Call performSTKPush with the necessary parameters
-//             const stkPushResponse = await performSTKPush(bearerToken, { phoneNumber, amount, reference });
-
+//         const stkPushResponse = await performSTKPush({ phoneNumber, amount, accountReference: reference });
+//         if (stkPushResponse?.status === 'SUCCESS') {
 //             user.hasSubscribed = true;
 //             await user.save();
-
-//             res.status(200).json({
-//                 message: 'Payment initiated successfully',
-//                 transactionId: transaction._id,
-//                 jengaResponse: stkPushResponse,
-//                 "STK Push Payload": JSON.stringify(payload),
-//                 "STK Push Headers": JSON.stringify(headers)
-//              });
-            
-//          } catch(error ) {
-//              console.error('Transaction Processing Failed:', error);
-             
-//              res.status(500).json({
-//                  message: 'Transaction Processing Failed',
-//                  error: error.message || 'An unexpected error occurred'
-//              });
-//          }
+//             return res.status(200).json({ message: 'Payment initiated successfully', transactionId: transaction._id, jengaResponse: stkPushResponse });
+//         }
+//         return res.status(400).json({ message: 'Payment failed', error: stkPushResponse || 'Unknown error' });
+//     } catch (error) {
+//         res.status(500).json({ message: 'Transaction Processing Failed', error: error.message });
+//     }
 // });
 
-// // Key Areas to Check and Fix for "Invalid Signature Keys Mapping!"
-// // 1. Ensure the private key path is correct and the file is accessible.
-// // 2. Confirm that the signature generation function is correctly creating the signature.
-// // 3. Ensure the message being signed matches the expected format in the Jenga API documentation.
-// // 4. Verify that your API credentials are correct and match those provided by Jenga.
-// // 5. Double-check the headers in your STK Push request.
+// router.post('/payment-callback', async (req, res) => {
+//     try {
+//         const { status, transactionId, reference, userId } = req.body;
+//         const user = await User.findById(userId);
+//         const transaction = await Transaction.findOne({ reference });
+//         if (!user || !transaction) return res.status(404).json({ message: 'User or transaction not found' });
+
+//         transaction.status = status === "SUCCESS" ? 'completed' : 'failed';
+//         if (status === "SUCCESS") {
+//             user.hasSubscribed = true;
+//             await user.save();
+//             transaction.transactionId = transactionId;
+//         }
+//         await transaction.save();
+//         return res.status(200).json({ message: status === "SUCCESS" ? 'Subscription updated successfully' : 'Payment failed', status });
+//     } catch (error) {
+//         return res.status(500).json({ message: 'Error processing callback', error: error.message });
+//     }
+// });
+
+// module.exports = router;
+// const express = require('express');
+// const fs = require('fs');
+// const jwt = require('jsonwebtoken');
+// const axios = require('axios');
+// const dotenv = require('dotenv');
+// const crypto = require('crypto');
+// const Transaction = require('../models/Transaction');
+
+// dotenv.config();
+
+// const router = express.Router();
+
+// const {
+//     MERCHANT_ACCOUNT_NUMBER,
+//     MERCHANT_NAME,
+//     CALLBACK_URL,
+// } = process.env;
+
+// const API_KEY =
+//   "Y5e2cRT3sQ/4iQg+TO69mY3CZ9QMNM2n8vzKHAsbvNdl9zXYCBItLGcHECjXhrjmxJLp+0pJCNnck8+abpw2RA==";
+// const MERCHANT_CODE =
+//   "5685692761";
+// const CONSUMER_SECRET =
+//   "9neJ1NL36uN4MGU3fOt4pv834haTCp";
+
+// const {
+//     generateSignature,
+//     getSignatureFromAPI,
+//     compareSignatures
+// } = require("./signature"); // Import all three functionsy
+
+
+// // Test Route for Signature Generation
+// router.post('/generate-test-signature', async (req, res) => {
+//     try {
+//         const {
+//             rawText,
+//             privateKeyString
+//         } = req.body;
+//         if (!rawText || !privateKeyString) {
+//             return res.status(400).json({
+//                 message: "Missing rawText or privateKeyString"
+//             });
+//         }
+
+//         const generatedSignature = await generateSignature(rawText, privateKeyString); // Use API function
+//         console.log("Generated Signature:", generatedSignature);
+
+//         res.status(200).json({
+//             signature: generatedSignature
+//         });
+//     } catch (error) {
+//         console.error("Error generating signature:", error);
+//         res.status(500).json({
+//             message: "Error generating signature",
+//             error: error.message
+//         });
+//     }
+// });
+
+// async function getAccessToken() {
+//     try {
+//         const response = await axios.post(
+//             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
+//             {
+//                 merchantCode: MERCHANT_CODE,
+//                 consumerSecret: CONSUMER_SECRET
+//             },
+//             {
+//                 headers: {
+//                     "Content-Type": "application/json",
+//                     "ApiKey": API_KEY
+//                 }
+//             }
+//         );
+//         console.log("Access Token:", response.data.accessToken);
+//         return response.data.accessToken;
+//     } catch (error) {
+//         console.error("Error getting access token:", error.response ? error.response.data : error.message);
+//         throw new Error(`Error getting access token: ${error.message}`);
+//     }
+// }
+
+// async function performSTKPush({
+//     phoneNumber,
+//     amount,
+//     accountReference,
+//     privateKeyString
+// }) {
+//     try {
+//         const rawTextForSignatureGeneration = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
+//         const generatedSignature = await generateSignature(rawTextForSignatureGeneration, privateKeyString); // Use the API function
+//         console.log("Generated Signature (Local):", generatedSignature);
+
+//         const accessToken = await getAccessToken();
+
+//         const stkPushResponseFromAPI = await axios.post(
+//             'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
+//             {
+//                 merchant: {
+//                     accountNumber: MERCHANT_ACCOUNT_NUMBER,
+//                     countryCode: 'KE',
+//                     name: MERCHANT_NAME
+//                 },
+//                 payment: {
+//                     ref: accountReference,
+//                     amount: amount.toString(),
+//                     currency: 'KES',
+//                     telco: 'Safaricom',
+//                     mobileNumber: phoneNumber,
+//                     date: new Date().toISOString().split('T')[0],
+//                     callBackUrl: CALLBACK_URL,
+//                     pushType: "STK"
+//                 }
+//             },
+//             {
+//                 headers: {
+//                     Authorization: `Bearer ${accessToken}`,
+//                     'Content-Type': 'application/json',
+//                     'Signature': generatedSignature
+//                 },
+//                 timeout: 15000
+//             }
+//         );
+
+//         return stkPushResponseFromAPI.data;
+//     } catch (error) {
+//         console.error("STK Push Error:", error.response ? error.response.data : error.message);
+//         throw new Error(`Error performing STK Push: ${error.message}`);
+//     }
+// }
+// // async function verifySignature(rawText, signature, publicKeyString) {
+// //     try {
+// //         const response = await axios.post(
+// //             "https://api-finserve-dev.finserve.africa/authentication/api/v3/verify/signature",
+// //             {
+// //                 rawText,
+// //                 signature,
+// //                 publicKeyString
+// //             }
+// //         );
+// //         console.log("Signature Verification Response:", response.data);
+// //         return response.data; // Return the entire response
+// //     } catch (error) {
+// //         console.error("Error verifying signature:", error.response ? error.response.data : error.message);
+// //         throw new Error(`Error verifying signature: ${error.message}`);
+// //     }
+// // }
+
+// // STK Push
+
+// router.post('/stk-push', async (req, res) => {
+//     try {
+//         if (!req.body.amount || !req.body.phoneNumber || !req.body.reference) {
+//             return res.status(400).json({
+//                 message: "Missing required fields (amount, phoneNumber, reference)"
+//             });
+//         }
+
+//         if (!MERCHANT_ACCOUNT_NUMBER || !CALLBACK_URL || !MERCHANT_NAME) {
+//             return res.status(500).json({
+//                 message: "Server configuration incomplete"
+//             });
+//         }
+
+//         const transaction = new Transaction({
+//             userId: req.userId || "67a5f218db306cedba9ed66a",
+//             amount: req.body.amount,
+//             currency: 'KES',
+//             telco: 'Safaricom',
+//             mobileNumber: req.body.phoneNumber,
+//             reference: req.body.reference,
+//             merchantName: MERCHANT_NAME || "Example Acc",
+//             merchantAccountNumber: 1100194977404,
+//             status: "pending"
+//         });
+
+//         await transaction.save();
+//         console.log("Transaction saved successfully");
+
+//         const stkPushResponse = await performSTKPush({
+//             phoneNumber: req.body.phoneNumber,
+//             amount: req.body.amount,
+//             accountReference: req.body.reference
+//             // privateKeyString: req.body.privateKeyString
+//         });
+
+//         console.log("STK Push Response:", stkPushResponse);
+
+//         if (stkPushResponse && stkPushResponse.status === "SUCCESS") {
+//             return res.status(200).json({
+//                 message: "Payment initiated successfully",
+//                 transactionId: transaction._id
+//             });
+//         } else {
+//             throw new Error(`STK push failed: ${stkPushResponse ? JSON.stringify(stkPushResponse) : 'Unknown error'}`);
+//         }
+
+//     } catch (error) {
+//         console.error("Transaction Processing Failed:", error);
+//         res.status(500).json({
+//             message: "Transaction Processing Failed",
+//             error: error.message
+//         });
+//     }
+// });
 
 // module.exports = router;
 
 
+// const express = require('express');
+// const fs = require('fs');
+// const jwt = require('jsonwebtoken');
+// const axios = require('axios');
+// const dotenv = require('dotenv');
+// const crypto = require('crypto');
+// const Transaction = require('../models/Transaction');
+
+// dotenv.config();
+
+// const router = express.Router();
+
+// const {
+//     MERCHANT_ACCOUNT_NUMBER,
+//     MERCHANT_NAME,
+//     CALLBACK_URL,
+// } = process.env;
+
+// const API_KEY =
+//   "Y5e2cRT3sQ/4iQg+TO69mY3CZ9QMNM2n8vzKHAsbvNdl9zXYCBItLGcHECjXhrjmxJLp+0pJCNnck8+abpw2RA==";
+// const MERCHANT_CODE =
+//   "5685692761";
+// const CONSUMER_SECRET =
+//   "9neJ1NL36uN4MGU3fOt4pv834haTCp";
+
+// const {
+//     generateSignature
+// } = require("./signature"); // Only import generateSignature now
+
+
+// // Test Route for Signature Generation
+// router.post('/generate-test-signature', async (req, res) => {
+//     try {
+//         const {
+//             rawText,
+//             privateKeyString
+//         } = req.body;
+//         if (!rawText || !privateKeyString) {
+//             return res.status(400).json({
+//                 message: "Missing rawText or privateKeyString"
+//             });
+//         }
+
+//         const generatedSignature = await generateSignature(rawText); // Use generateSignature directly
+//         console.log("Generated Signature:", generatedSignature);
+
+//         res.status(200).json({
+//             signature: generatedSignature
+//         });
+//     } catch (error) {
+//         console.error("Error generating signature:", error);
+//         res.status(500).json({
+//             message: "Error generating signature",
+//             error: error.message
+//         });
+//     }
+// });
+
+// async function getAccessToken() {
+//     try {
+//         const response = await axios.post(
+//             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
+//             {
+//                 merchantCode: MERCHANT_CODE,
+//                 consumerSecret: CONSUMER_SECRET
+//             },
+//             {
+//                 headers: {
+//                     "Content-Type": "application/json",
+//                     "ApiKey": API_KEY
+//                 }
+//             }
+//         );
+//         console.log("Access Token:", response.data.accessToken);
+//         return response.data.accessToken;
+//     } catch (error) {
+//         console.error("Error getting access token:", error.response ? error.response.data : error.message);
+//         throw new Error(`Error getting access token: ${error.message}`);
+//     }
+// }
+
+// async function performSTKPush({
+//     phoneNumber,
+//     amount,
+//     accountReference,
+//     privateKeyString
+// }) {
+//     try {
+//         // Removed getSignatureFromAPI and directly use generateSignature
+//         const rawTextForSignatureGeneration = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
+//         const generatedSignature = await generateSignature(rawTextForSignatureGeneration); // Use generateSignature directly
+//         console.log("Generated Signature (Local):", generatedSignature);
+
+//         const accessToken = await getAccessToken();
+
+//         const stkPushResponseFromAPI = await axios.post(
+//             'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
+//             {
+//                 merchant: {
+//                     accountNumber: MERCHANT_ACCOUNT_NUMBER,
+//                     countryCode: 'KE',
+//                     name: MERCHANT_NAME
+//                 },
+//                 payment: {
+//                     ref: accountReference,
+//                     amount: amount.toString(),
+//                     currency: 'KES',
+//                     telco: 'Safaricom',
+//                     mobileNumber: phoneNumber,
+//                     date: new Date().toISOString().split('T')[0],
+//                     callBackUrl: CALLBACK_URL,
+//                     pushType: "STK"
+//                 }
+//             },
+//             {
+//                 headers: {
+//                     Authorization: `Bearer ${accessToken}`,
+//                     'Content-Type': 'application/json',
+//                     'Signature': generatedSignature
+//                 },
+//                 timeout: 15000
+//             }
+//         );
+
+//         return stkPushResponseFromAPI.data;
+//     } catch (error) {
+//         console.error("STK Push Error:", error.response ? error.response.data : error.message);
+//         throw new Error(`Error performing STK Push: ${error.message}`);
+//     }
+// }
+
+// // STK Push
+// router.post('/stk-push', async (req, res) => {
+//     try {
+//         if (!req.body.amount || !req.body.phoneNumber || !req.body.reference) {
+//             return res.status(400).json({
+//                 message: "Missing required fields (amount, phoneNumber, reference)"
+//             });
+//         }
+
+//         if (!MERCHANT_ACCOUNT_NUMBER || !CALLBACK_URL || !MERCHANT_NAME) {
+//             return res.status(500).json({
+//                 message: "Server configuration incomplete"
+//             });
+//         }
+
+//         const transaction = new Transaction({
+//             userId: req.userId || "67a5f218db306cedba9ed66a",
+//             amount: req.body.amount,
+//             currency: 'KES',
+//             telco: 'Safaricom',
+//             mobileNumber: req.body.phoneNumber,
+//             reference: req.body.reference,
+//             merchantName: MERCHANT_NAME || "Example Acc",
+//             merchantAccountNumber: 1100194977404,
+//             status: "pending"
+//         });
+
+//         await transaction.save();
+//         console.log("Transaction saved successfully");
+
+//         const stkPushResponse = await performSTKPush({
+//             phoneNumber: req.body.phoneNumber,
+//             amount: req.body.amount,
+//             accountReference: req.body.reference
+//             // privateKeyString is not required anymore
+//         });
+
+//         console.log("STK Push Response:", stkPushResponse);
+
+//         if (stkPushResponse && stkPushResponse.status === "SUCCESS") {
+//             return res.status(200).json({
+//                 message: "Payment initiated successfully",
+//                 transactionId: transaction._id
+//             });
+//         } else {
+//             throw new Error(`STK push failed: ${stkPushResponse ? JSON.stringify(stkPushResponse) : 'Unknown error'}`);
+//         }
+
+//     } catch (error) {
+//         console.error("Transaction Processing Failed:", error);
+//         res.status(500).json({
+//             message: "Transaction Processing Failed",
+//             error: error.message
+//         });
+//     }
+// });
+
+// module.exports = router;
 
 const express = require('express');
-const Transaction = require('../models/Transaction');
-const User = require('../models/User'); // Ensure this is used if querying users
+const fs = require('fs');
 const jwt = require('jsonwebtoken');
 const axios = require('axios');
+const dotenv = require('dotenv');
 const crypto = require('crypto');
-const fs = require('fs');
-require('dotenv').config();
+const User = require('../models/User');
+const Transaction = require('../models/Transaction');
+
+dotenv.config();
 
 const router = express.Router();
 
-// Environment variables
 const {
-    API_KEY,
-    MERCHANT_CODE,
-    CONSUMER_SECRET,
-    JENGA_API_URL,
-    JWT_SECRET,
-    PRIVATE_KEY_PATH,
-    PUBLIC_KEY_PATH,
+    MERCHANT_ACCOUNT_NUMBER,
+    MERCHANT_NAME,
+    CALLBACK_URL,
 } = process.env;
 
-// Function to generate RSA key pair (Private & Public Keys)
-const generateKeyPair = () => {
+const API_KEY =
+  "Y5e2cRT3sQ/4iQg+TO69mY3CZ9QMNM2n8vzKHAsbvNdl9zXYCBItLGcHECjXhrjmxJLp+0pJCNnck8+abpw2RA==";
+const MERCHANT_CODE =
+  "5685692761";
+const CONSUMER_SECRET =
+  "9neJ1NL36uN4MGU3fOt4pv834haTCp";
+
+// Import generateSignature function (only once)
+const { generateSignature } = require("./signature"); 
+
+// Test Route for Signature Generation (Unused now, but kept here for reference)
+router.post('/generate-test-signature', async (req, res) => {
     try {
-        const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-            modulusLength: 2048, // Key size in bits
-            publicKeyEncoding: {
-                type: 'spki', // Standard for public keys
-                format: 'pem', // PEM format
-            },
-            privateKeyEncoding: {
-                type: 'pkcs8', // Standard for private keys
-                format: 'pem', // PEM format
-            },
-        });
-
-        // Save keys to files
-        fs.writeFileSync(PRIVATE_KEY_PATH, privateKey);
-        fs.writeFileSync(PUBLIC_KEY_PATH, publicKey);
-
-        console.log('RSA Key Pair generated and saved!');
-        console.log(`Private Key Path: ${PRIVATE_KEY_PATH}`);
-        console.log(`Public Key Path: ${PUBLIC_KEY_PATH}`);
-    } catch (error) {
-        console.error('Error generating RSA keys:', error);
-    }
-};
-
-// Function to generate the signature using the private key
-const generateSignature = (message) => {
-    if (!fs.existsSync(PRIVATE_KEY_PATH)) {
-        throw new Error(`Private key not found at ${PRIVATE_KEY_PATH}`);
-    }
-
-    const privateKey = fs.readFileSync(PRIVATE_KEY_PATH, 'utf8');
-    const sign = crypto.createSign('SHA256');
-    sign.update(message);
-    sign.end();
-
-    // Sign using the private key and return in 'hex' encoding
-    return sign.sign(privateKey, 'hex');
-};
-
-// Validation Middleware (Checking required fields)
-const validateFields = (requiredFields) => {
-    return (req, res, next) => {
-        const missingFields = requiredFields.filter((field) => !req.body[field]);
-        if (missingFields.length > 0) {
+        const {
+            rawText,
+            privateKeyString
+        } = req.body;
+        if (!rawText || !privateKeyString) {
             return res.status(400).json({
-                message: `Missing required fields: ${missingFields.join(', ')}`,
+                message: "Missing rawText or privateKeyString"
             });
         }
-        next();
-    };
-};
 
-// Token Authentication Middleware
-const authenticateToken = (req, res, next) => {
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1];
+        const generatedSignature = await generateSignature(rawText); // Use generateSignature directly
+        console.log("Generated Signature:", generatedSignature);
 
-    if (!token) {
-        return res.status(401).json({
-            message: 'No authentication token provided',
-            error: 'Unauthorized',
+        res.status(200).json({
+            signature: generatedSignature
         });
-    }
-
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
-        req.userId = decoded.id;
-        req.user = decoded;
-        next();
     } catch (error) {
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                message: 'Token expired. Please log in again.',
-                error: 'Unauthorized',
-            });
-        }
-
-        console.error('Token Verification Error:', error);
-        return res.status(403).json({
-            message: 'Invalid token',
-            error: error.message,
+        console.error("Error generating signature:", error);
+        res.status(500).json({
+            message: "Error generating signature",
+            error: error.message
         });
     }
-};
+});
 
-// Get Bearer Token from Jenga API
-const getJengaBearerToken = async () => {
+async function getAccessToken() {
     try {
         const response = await axios.post(
-            `${JENGA_API_URL}/authentication/api/v3/authenticate/merchant`,
+            "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
             {
                 merchantCode: MERCHANT_CODE,
-                consumerSecret: CONSUMER_SECRET,
+                consumerSecret: CONSUMER_SECRET
             },
             {
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Api-Key': API_KEY,
-                },
-                timeout: 10000,
+                    "Content-Type": "application/json",
+                    "Api-Key": API_KEY
+                }
             }
         );
-
+        console.log("Access Token:", response.data.accessToken);
         return response.data.accessToken;
     } catch (error) {
-        console.error('Jenga Token Generation Error:', error.response?.data || error.message);
-        throw new Error('Failed to generate Jenga Bearer Token');
+        console.error("Error getting access token:", error.response ? error.response.data : error.message);
+        throw new Error(`Error getting access token: ${error.message}`);
     }
-};
+}
 
-const performSTKPush = async (accessToken, { accountNumber, countryCode, merchantName, paymentRef, amount, currency, telco, mobileNumber, date, callBackUrl, pushType }) => {
-    const payload = {
-        merchant: {
-            accountNumber: accountNumber,
-            countryCode: countryCode,
-            name: merchantName,
-        },
-        payment: {
-            ref: paymentRef,
-            amount: amount.toString(), // Ensure amount is a string
-            currency: currency,
-            telco: telco,
-            mobileNumber: mobileNumber.replace('+', '').replace(/^0/, '254'), // Format phone number
-            date: date,
-            callBackUrl: callBackUrl,
-            pushType: pushType,
-        }
-    };
-
+async function performSTKPush({ phoneNumber, amount, accountReference }) {
     try {
-        // Construct the signature message
-        const signatureMessage = `${accountNumber}${paymentRef}${mobileNumber.replace('+', '').replace(/^0/, '254')}${telco}${amount}${currency}`;
-        
+        // Prepare raw text for signature (concatenation)
+        const rawText = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
+
         // Generate the signature
-        const signature = generateSignature(signatureMessage);
+        const generatedSignature = await generateSignature(rawText); // Await here to get the signature
 
-        const headers = {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-            'Api-Key': API_KEY,
-            Signature: signature,
-        };
+        // Get the access token
+        const accessToken = await getAccessToken();
 
-        // Log for debugging
-        console.log('STK Push Payload:', JSON.stringify(payload, null, 2));
-        console.log('Signature Message:', signatureMessage);
-        console.log('Generated Signature:', signature);
-        console.log('Headers:', headers);
+        // Make the STK Push API call
+        const stkPushResponseFromAPI = await axios.post(
+            'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
+            {
+                merchant: {
+                    accountNumber: MERCHANT_ACCOUNT_NUMBER,
+                    countryCode: 'KE',
+                    name: MERCHANT_NAME
+                },
+                payment: {
+                    ref: accountReference,
+                    amount: amount.toString(),
+                    currency: 'KES',
+                    telco: 'Safaricom',
+                    mobileNumber: phoneNumber,
+                    date: new Date().toISOString().split('T')[0],
+                    callBackUrl: CALLBACK_URL,
+                    pushType: "USSD"
+                }
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Signature': generatedSignature  // Correct signature in the header
+                },
+                timeout: 15000
+            }
+        );        
 
-        // Make STK Push request
-        const response = await axios.post(
-            `${JENGA_API_URL}/v3-apis/payment-api/v3.0/stkussdpush/initiate`,
-            payload,
-            { headers }
-        );
-
-        return response.data;
+        return stkPushResponseFromAPI.data;
     } catch (error) {
-        console.error('STK Push Error:', error.response?.data || error.message);
-        throw new Error(`STK Push failed with status code ${error.response?.status || 500}: ${error.message}`);
+        console.error("STK Push Error:", error.response ? error.response.data : error.message);
+        throw new Error(`Error performing STK Push: ${error.message}`);
     }
-};
+}
 
 
-// Route to perform STK Push
-router.post('/stk-push', authenticateToken, validateFields(['accountNumber', 'countryCode', 'merchantName', 'paymentRef', 'amount', 'currency', 'telco', 'mobileNumber', 'date', 'callBackUrl', 'pushType']), async (req, res) => {
+// STK Push Route
+router.post('/stk-push', async (req, res) => {
     try {
-        const { accountNumber, countryCode, merchantName, paymentRef, amount, currency, telco, mobileNumber, date, callBackUrl, pushType } = req.body;
+        // Destructure necessary fields from the request body
+        const { 
+            payment: { 
+                ref: reference, 
+                amount, 
+                currency, 
+                telco, 
+                mobileNumber 
+            },
+            merchant: { 
+                accountNumber: merchantAccountNumber, 
+                name: merchantName 
+            }
+        } = req.body;
 
-        // Get Jenga Bearer Token
-        const accessToken = await getJengaBearerToken();
+        // Validate that the required fields are present
+        if (!amount || !currency || !telco || !mobileNumber || !reference || !merchantName || !merchantAccountNumber) {
+            return res.status(400).json({ message: "All fields are required" });
+        }
 
-        // Call performSTKPush with all necessary parameters
-        const response = await performSTKPush(accessToken, {
-            accountNumber,
-            countryCode,
-            merchantName,
-            paymentRef,
+        // Create a new transaction
+        const transaction = new Transaction({
+            userId: req.userId || "67a5f218db306cedba9ed66a",  // Replace with actual user ID
             amount,
             currency,
             telco,
             mobileNumber,
-            date,
-            callBackUrl,
-            pushType
+            reference,
+            merchantName,
+            merchantAccountNumber,
+            status: "pending"
         });
 
-        return res.json(response);
-    } catch (error) {
-        console.error('STK Push Error:', error.response ? error.response.data : error.message);
-        return res.status(500).json({ error: error.response ? error.response.data : error.message });
-    }
-});
-
-
-// Callback to handle transaction results from Mpesa
-router.post('/callback', async (req, res) => {
-    const { code, status, transactionReference, telcoReference, mobileNumber, requestAmount, debitedAmount, charge, telco } = req.body;
-
-    // Handle transaction status
-    switch (code) {
-        case 3:
-            console.log(`Transaction ${transactionReference} completed successfully and credited to merchant.`);
-            break;
-        case 4:
-            console.log(`Transaction ${transactionReference} was successful but failed to credit merchant account.`);
-            break;
-        case 5:
-            console.log(`Transaction ${transactionReference} was canceled by user.`);
-            break;
-        case 7:
-            console.log(`Transaction ${transactionReference} was rejected due to validation errors.`);
-            break;
-        default:
-            console.log(`Transaction ${transactionReference} status unknown.`);
-            break;
-    }
-
-    // Save the transaction status in the database if necessary
-    const transaction = await Transaction.findOne({ reference: transactionReference });
-    if (transaction) {
-        transaction.status = status;
+        // Save the transaction to the database
         await transaction.save();
-    }
 
-    res.status(200).json({ message: 'Callback received and processed successfully' });
-});
+        // Proceed with the STK Push or any other logic
+        const pushResponse = await performSTKPush({
+            phoneNumber: mobileNumber,
+            amount,
+            accountReference: reference
+        });
 
-// Route to generate new RSA key pair
-router.post('/generate-keys', async (req, res) => {
-    try {
-        generateKeyPair();
-        res.status(200).json({ message: 'New RSA key pair generated successfully.' });
+        res.status(200).json(pushResponse);
     } catch (error) {
-        console.error('Error generating keys:', error);
-        res.status(500).json({ message: 'Failed to generate keys', error });
+        console.error("Error initiating STK push:", error);
+        res.status(500).json({ error: error.message });
     }
 });
+
+// Callback route to handle the payment response and update the user subscription
+router.post('/payment-callback', async (req, res) => {
+    const { mobileNumber } = req.body; // Only mobileNumber will be passed in the callback
+
+    try {
+        // Search for a transaction based on mobileNumber and the status
+        const transaction = await Transaction.findOne({ mobileNumber, status: { $in: ['pending', 'completed'] } });
+
+        // If no transaction is found, return an error
+        if (!transaction) {
+            return res.status(404).json({ message: 'Transaction not found for this mobile number' });
+        }
+
+        // You can check if the transaction is pending or completed and handle it accordingly
+        if (transaction.status === 'pending') {
+            // Update the transaction status to 'completed'
+            transaction.status = 'completed';
+            transaction.transactionId = 'GeneratedTransactionId'; // Assuming this is generated in your payment system
+            transaction.telcoReference = 'GeneratedTelcoReference'; // Generated reference (if applicable)
+            transaction.amount = transaction.amount; // Amount from the transaction
+            transaction.charge = 1; // This charge can be static or calculated dynamically based on your system
+            await transaction.save();
+        }
+
+        // Fetch the user based on mobileNumber (assuming each mobile number is linked to a unique user)
+        const user = await User.findOne({ mobileNumber }); // Assuming `mobileNumber` exists in the User schema
+        if (!user) {
+            return res.status(404).json({ message: 'User not found for this mobile number' });
+        }
+
+        // Update the user's subscription status
+        user.hasSubscribed = true; // User is now subscribed
+        await user.save();
+
+        // Return success response
+        return res.status(200).json({
+            message: 'Transaction successful and user subscription updated',
+            status: 'Payment successful',
+            mobileNumber,
+            debitedAmount: transaction.amount,
+            charge: 1
+        });
+    } catch (error) {
+        console.error('Payment Callback Error:', error);
+        return res.status(500).json({
+            message: 'An error occurred during the payment callback',
+            error: error.message
+        });
+    }
+});
+
+
+
 
 module.exports = router;
+
