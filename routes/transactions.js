@@ -612,8 +612,23 @@ async function getAccessToken() {
     }
 }
 
-async function performSTKPush({ phoneNumber, amount, accountReference }) {
+// Function to generate a random alphanumeric string of a given length
+function generateRandomAlphanumeric(length = 8) {
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let result = '';
+    const charactersLength = characters.length;
+    for (let i = 0; i < length; i++) {
+        result += characters.charAt(Math.floor(Math.random() * charactersLength));
+    }
+    return result;
+}
+
+// Perform STK Push Function (simplified)
+async function performSTKPush({ phoneNumber, accountReference }) {
     try {
+        // Fixed amount as per your requirement
+        const amount = 5.00;
+
         // Prepare raw text for signature (concatenation)
         const rawText = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
 
@@ -623,7 +638,10 @@ async function performSTKPush({ phoneNumber, amount, accountReference }) {
         // Get the access token
         const accessToken = await getAccessToken();
 
-        // Make the STK Push API call
+        // Get the current date in the required format (YYYY-MM-DD)
+        const currentDate = new Date().toISOString().split('T')[0];
+
+        // Make the STK Push API call with hardcoded values
         const stkPushResponseFromAPI = await axios.post(
             'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
             {
@@ -633,14 +651,14 @@ async function performSTKPush({ phoneNumber, amount, accountReference }) {
                     name: MERCHANT_NAME
                 },
                 payment: {
-                    ref: accountReference,
+                    ref: accountReference,  // Unique account reference
                     amount: amount.toString(),
-                    currency: 'KES',
-                    telco: 'Safaricom',
-                    mobileNumber: phoneNumber,
-                    date: new Date().toISOString().split('T')[0],
-                    callBackUrl: CALLBACK_URL,
-                    pushType: "USSD"
+                    currency: 'KES',  // Currency is hardcoded
+                    telco: 'Safaricom',  // Telco is hardcoded
+                    mobileNumber: phoneNumber,  // Dynamic phone number
+                    date: currentDate,  // Current date
+                    callBackUrl: CALLBACK_URL,  // Callback URL is hardcoded
+                    pushType: "USSD"  // Push type is hardcoded
                 }
             },
             {
@@ -651,7 +669,7 @@ async function performSTKPush({ phoneNumber, amount, accountReference }) {
                 },
                 timeout: 15000
             }
-        );        
+        );
 
         return stkPushResponseFromAPI.data;
     } catch (error) {
@@ -660,29 +678,28 @@ async function performSTKPush({ phoneNumber, amount, accountReference }) {
     }
 }
 
-
 // STK Push Route
 router.post('/stk-push', async (req, res) => {
     try {
-        // Destructure necessary fields from the request body
-        const { 
-            payment: { 
-                ref: reference, 
-                amount, 
-                currency, 
-                telco, 
-                mobileNumber 
-            },
-            merchant: { 
-                accountNumber: merchantAccountNumber, 
-                name: merchantName 
-            }
-        } = req.body;
+        // Destructure only the mobileNumber from the request body
+        const { mobileNumber } = req.body;
 
-        // Validate that the required fields are present
-        if (!amount || !currency || !telco || !mobileNumber || !reference || !merchantName || !merchantAccountNumber) {
-            return res.status(400).json({ message: "All fields are required" });
+        // Validate that the mobile number is present
+        if (!mobileNumber) {
+            return res.status(400).json({ message: "Mobile number is required" });
         }
+
+        // Fixed amount of 5.00 (as per your request)
+        const amount = 5.00;
+
+        // Generate a unique account reference using a random alphanumeric string
+        const reference = generateRandomAlphanumeric(8);  // Generates an alphanumeric reference (8 characters)
+
+        // Default values for other fields (since they're constant)
+        const currency = 'KES';
+        const telco = 'Safaricom';
+        const merchantName = MERCHANT_NAME;
+        const merchantAccountNumber = MERCHANT_ACCOUNT_NUMBER;
 
         // Create a new transaction
         const transaction = new Transaction({
@@ -703,7 +720,6 @@ router.post('/stk-push', async (req, res) => {
         // Proceed with the STK Push or any other logic
         const pushResponse = await performSTKPush({
             phoneNumber: mobileNumber,
-            amount,
             accountReference: reference
         });
 
@@ -713,6 +729,8 @@ router.post('/stk-push', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
+
 
 // Callback route to handle the payment response and update the user subscription
 router.post('/payment-callback', async (req, res) => {
