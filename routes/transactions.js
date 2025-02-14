@@ -589,7 +589,81 @@ router.post('/generate-test-signature', async (req, res) => {
     }
 });
 
+
+router.get('/access-token', async (req, res) => {
+    try {
+        const token = await getAccessToken();  // Ensure this function is calling refresh if expired
+        res.status(200).json({ accessToken: token });
+    } catch (error) {
+        res.status(500).json({ error: 'Error generating access token', message: error.message });
+    }
+});
+
+// async function getAccessToken() {
+//     try {
+//         const response = await axios.post(
+//             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
+//             {
+//                 merchantCode: MERCHANT_CODE,
+//                 consumerSecret: CONSUMER_SECRET
+//             },
+//             {
+//                 headers: {
+//                     "Content-Type": "application/json",
+//                     "Api-Key": API_KEY
+//                 }
+//             }
+//         );
+//         console.log("Access Token:", response.data.accessToken);
+//         return response.data.accessToken;
+//     } catch (error) {
+//         console.error("Error getting access token:", error.response ? error.response.data : error.message);
+//         throw new Error(`Error getting access token: ${error.message}`);
+//     }
+// }
+
+let accessToken = null;
+let expirationTime = null; // Store expiration time (in milliseconds)
+let refreshToken = null;  // You may need to get this from your authentication response
+
+async function refreshAccessToken() {
+    try {
+        const response = await axios.post(
+            "https://uat.finserve.africa/authentication/api/v3/refresh",  // Assuming this is the refresh endpoint
+            { refreshToken }, // Pass the refresh token to get a new access token
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    "Api-Key": API_KEY
+                }
+            }
+        );
+        accessToken = response.data.accessToken;
+        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Set expiration to 1 hour from now
+        refreshToken = response.data.refreshToken; // Assuming the response also returns a refresh token
+        console.log("Access Token Refreshed:", accessToken);
+        return accessToken;
+    } catch (error) {
+        console.error("Error refreshing access token:", error.response ? error.response.data : error.message);
+        throw new Error("Error refreshing access token");
+    }
+}
+
 async function getAccessToken() {
+    // If the access token is invalid or expired, refresh it
+    if (!accessToken || new Date().getTime() > expirationTime) {
+        if (refreshToken) {
+            console.log("Access token expired, refreshing...");
+            return await refreshAccessToken();
+        } else {
+            console.log("No refresh token available, generating a new access token...");
+            return await generateNewAccessToken();
+        }
+    }
+    return accessToken;
+}
+
+async function generateNewAccessToken() {
     try {
         const response = await axios.post(
             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
@@ -604,13 +678,31 @@ async function getAccessToken() {
                 }
             }
         );
-        console.log("Access Token:", response.data.accessToken);
-        return response.data.accessToken;
+        accessToken = response.data.accessToken;
+        refreshToken = response.data.refreshToken; // Save the refresh token for future use
+        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Assuming 1 hour expiration time
+        console.log("New Access Token:", accessToken);
+        return accessToken;
     } catch (error) {
-        console.error("Error getting access token:", error.response ? error.response.data : error.message);
-        throw new Error(`Error getting access token: ${error.message}`);
+        console.error("Error generating new access token:", error.response ? error.response.data : error.message);
+        throw new Error("Error generating new access token");
     }
 }
+
+// Example usage: Use this function to automatically get or refresh the access token
+async function callApi() {
+    try {
+        const token = await getAccessToken();
+        // Now you can use this token to make other API calls
+        console.log("Using Access Token:", token);
+    } catch (error) {
+        console.error("Error in API call:", error.message);
+    }
+}
+
+// Call the API and ensure token is refreshed/valid
+callApi();
+
 
 // Function to generate a random alphanumeric string of a given length
 function generateRandomAlphanumeric(length = 8) {
@@ -623,7 +715,6 @@ function generateRandomAlphanumeric(length = 8) {
     return result;
 }
 
-// Perform STK Push Function (simplified)
 async function performSTKPush({ phoneNumber, accountReference }) {
     try {
         // Fixed amount as per your requirement
@@ -635,7 +726,7 @@ async function performSTKPush({ phoneNumber, accountReference }) {
         // Generate the signature
         const generatedSignature = await generateSignature(rawText); // Await here to get the signature
 
-        // Get the access token
+        // Get the access token (it will auto-refresh if expired)
         const accessToken = await getAccessToken();
 
         // Get the current date in the required format (YYYY-MM-DD)
@@ -663,9 +754,9 @@ async function performSTKPush({ phoneNumber, accountReference }) {
             },
             {
                 headers: {
-                    Authorization: `Bearer ${accessToken}`,
+                    Authorization: `Bearer ${accessToken}`, // Use the dynamic access token here
                     'Content-Type': 'application/json',
-                    'Signature': generatedSignature  // Correct signature in the header
+                    'Signature': generatedSignature  // Use the generated signature
                 },
                 timeout: 15000
             }
@@ -677,6 +768,7 @@ async function performSTKPush({ phoneNumber, accountReference }) {
         throw new Error(`Error performing STK Push: ${error.message}`);
     }
 }
+
 
 // STK Push Route
 router.post('/stk-push', async (req, res) => {
@@ -782,8 +874,6 @@ router.post('/payment-callback', async (req, res) => {
         });
     }
 });
-
-
 
 
 module.exports = router;
