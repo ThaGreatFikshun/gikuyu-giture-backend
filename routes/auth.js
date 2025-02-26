@@ -171,6 +171,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Transaction = require('../models/Transaction'); // Import the Transaction model
 const crypto = require('crypto');
 
 const router = express.Router();
@@ -260,6 +261,50 @@ router.post('/register', async (req, res) => {
 });
 
 // Login User
+// router.post('/login', async (req, res) => {
+//     const { username, password } = req.body;
+
+//     try {
+//         // Find user
+//         const user = await User.findOne({ username });
+//         if (!user) {
+//             return res.status(404).json({ 
+//                 message: 'User not found' 
+//             });
+//         }
+
+//         // Validate password
+//         const isMatch = await bcrypt.compare(password, user.password);
+//         if (!isMatch) {
+//             return res.status(400).json({ 
+//                 message: 'Invalid credentials' 
+//             });
+//         }
+
+//         // Generate tokens
+//         const accessToken = generateAccessToken(user);
+//         const refreshToken = generateRefreshToken(user);
+
+//         // Optional: Store refresh token in database if needed
+//         user.refreshToken = refreshToken;
+//         await user.save();
+
+//         // Send response with subscription status
+//         res.json({ 
+//             accessToken, 
+//             refreshToken,
+//             userId: user._id,
+//             hasSubscribed: user.hasSubscribed  // Include the subscription status
+//         });
+//     } catch (error) {
+//         console.error('Login Error:', error);
+//         res.status(500).json({ 
+//             message: 'Error logging in',
+//             error: error.message 
+//         });
+//     }
+// });
+
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
@@ -280,26 +325,30 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        // Get the latest transaction - Modified code
+        const latestTransaction = await Transaction.findOne({ userId: user._id })
+            .sort({ createdAt: -1 }) // Sort by createdAt in descending order
+            .limit(1)             // Limit to 1 result
+            .lean();              // Return a plain JavaScript object
+
         // Generate tokens
         const accessToken = generateAccessToken(user);
         const refreshToken = generateRefreshToken(user);
 
-        // Optional: Store refresh token in database if needed
-        user.refreshToken = refreshToken;
-        await user.save();
-
-        // Send response with subscription status
-        res.json({ 
-            accessToken, 
+        // Send response with subscription status, mobileNumber and transaction details - Modified Code
+        res.json({
+            accessToken,
             refreshToken,
             userId: user._id,
-            hasSubscribed: user.hasSubscribed  // Include the subscription status
+            hasSubscribed: user.hasSubscribed,
+            mobileNumber: user.mobileNumber,
+            transactionDetails: latestTransaction || null  // Include transaction details, or null if none found
         });
     } catch (error) {
         console.error('Login Error:', error);
-        res.status(500).json({ 
+        res.status(500).json({
             message: 'Error logging in',
-            error: error.message 
+            error: error.message
         });
     }
 });
