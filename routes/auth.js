@@ -353,6 +353,27 @@ router.post('/login', async (req, res) => {
     }
 });
 
+// logout Logic
+router.post('/logout', async (req, res) => {
+    const { userId } = req.body;
+
+    try {
+        // Find user
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Clear the refresh token
+        user.refreshToken = null;
+        await user.save();
+
+        res.status(200).json({ message: 'Logged out successfully' });
+    } catch (error) {
+        console.error('Logout Error:', error);
+        res.status(500).json({ message: 'Error logging out', error: error.message });
+    }
+});
 // Refresh Token
 router.post('/refresh-token', async (req, res) => {
     const { refreshToken } = req.body;
