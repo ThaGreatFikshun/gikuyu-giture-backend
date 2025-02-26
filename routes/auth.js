@@ -174,6 +174,8 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction'); // Import the Transaction model
 const crypto = require('crypto');
 
+const nodemailer = require('nodemailer');
+
 const router = express.Router();
 
 // Validate JWT Secret
@@ -260,51 +262,6 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Login User
-// router.post('/login', async (req, res) => {
-//     const { username, password } = req.body;
-
-//     try {
-//         // Find user
-//         const user = await User.findOne({ username });
-//         if (!user) {
-//             return res.status(404).json({ 
-//                 message: 'User not found' 
-//             });
-//         }
-
-//         // Validate password
-//         const isMatch = await bcrypt.compare(password, user.password);
-//         if (!isMatch) {
-//             return res.status(400).json({ 
-//                 message: 'Invalid credentials' 
-//             });
-//         }
-
-//         // Generate tokens
-//         const accessToken = generateAccessToken(user);
-//         const refreshToken = generateRefreshToken(user);
-
-//         // Optional: Store refresh token in database if needed
-//         user.refreshToken = refreshToken;
-//         await user.save();
-
-//         // Send response with subscription status
-//         res.json({ 
-//             accessToken, 
-//             refreshToken,
-//             userId: user._id,
-//             hasSubscribed: user.hasSubscribed  // Include the subscription status
-//         });
-//     } catch (error) {
-//         console.error('Login Error:', error);
-//         res.status(500).json({ 
-//             message: 'Error logging in',
-//             error: error.message 
-//         });
-//     }
-// });
-
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
 
@@ -352,6 +309,101 @@ router.post('/login', async (req, res) => {
         });
     }
 });
+
+// Nodemailer configuration
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: process.env.SMTP_PORT,
+    secure: false, // Use `true` for port 465, `false` for all other ports
+    auth: {
+        user: process.env.SMTP_USERNAME,
+        pass: process.env.SMTP_PASSWORD,
+    },
+});
+
+// Forgot Password
+router.post('/forgot-password', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email || email.trim() === '') {
+        return res.status(400).json({ message: 'Email is required' });
+    }
+
+    try {
+        // Find user by email
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found with this email' });
+        }
+
+        // Generate a password reset token
+        const passwordResetToken = crypto.randomBytes(32).toString('hex');
+        user.passwordResetToken = passwordResetToken;
+        user.passwordResetTokenExpiration = Date.now() + 3600000; // Token expires in 1 hour
+        await user.save();
+
+        // Send the password reset link to the user's email address
+        const mailOptions = {
+            from: process.env.SMTP_USERNAME,
+            to: user.email,
+            subject: 'Password Reset',
+            text: `Please reset your password by clicking this link: https://your-app-url.com/reset-password/${passwordResetToken}`,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+                console.error('Error sending email:', error);
+                return res.status(500).json({ message: 'Error sending password reset link', error: error.message });
+            } else {
+                console.log('Email sent: ' + info.response);
+                res.status(200).json({ message: 'Password reset link sent to your registered email' });
+            }
+        });
+    } catch (error) {
+        console.error('Forgot Password Error:', error);
+        res.status(500).json({ message: 'Error sending password reset link', error: error.message });
+    }
+});
+
+// Reset Password
+router.post('/reset-password', async (req, res) => {
+    const { passwordResetToken, newPassword } = req.body;
+
+    if (!passwordResetToken || passwordResetToken.trim() === '') {
+        return res.status(400).json({ message: 'Password reset token is required' });
+    }
+
+    if (!newPassword || newPassword.trim() === '') {
+        return res.status(400).json({ message: 'New password is required' });
+    }
+
+    try {
+        // Find user by password reset token
+        const user = await User.findOne({
+            passwordResetToken: passwordResetToken,
+            passwordResetTokenExpiration: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired password reset token' });
+        }
+
+        // Hash the new password
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        // Update the user's password
+        user.password = hashedPassword;
+        user.passwordResetToken = null;
+        user.passwordResetTokenExpiration = null;
+        await user.save();
+
+        res.status(200).json({ message: 'Password reset successfully' });
+    } catch (error) {
+        console.error('Reset Password Error:', error);
+        res.status(500).json({ message: 'Error resetting password', error: error.message });
+    }
+});
+
 
 // logout Logic
 router.post('/logout', async (req, res) => {
