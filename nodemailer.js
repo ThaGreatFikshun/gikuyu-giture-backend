@@ -1,13 +1,12 @@
-const nodemailer = require('nodemailer');
 
-// Load environment variables from .env
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 // Nodemailer configuration
 const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: process.env.SMTP_PORT,
-    secure: false, // Use `true` for port 465, `false` for all other ports
+    secure: false, // Use secure connection
     auth: {
         user: process.env.SMTP_USERNAME,
         pass: process.env.SMTP_PASSWORD,
@@ -19,10 +18,10 @@ async function sendEmail(options) {
     try {
         const info = await transporter.sendMail(options);
         console.log('Email sent: ' + info.response);
-        return info;
+        return true; // Return true if email is sent successfully
     } catch (error) {
         console.error('Error sending email:', error);
-        throw error;
+        return false; // Return false if there's an error
     }
 }
 
