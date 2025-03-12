@@ -795,7 +795,7 @@ router.post('/stk-push', async (req, res) => {
 
         // Create a new transaction
         const transaction = new Transaction({
-            userId: req.userId || "67a5f218db306cedba9ed66a",  // Replace with actual user ID
+            userId: req.userId,  // Replace with actual user ID
             amount,
             currency,
             telco,
