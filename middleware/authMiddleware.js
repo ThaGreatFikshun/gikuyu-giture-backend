@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const User = require('../models/User'); // Import User model if you need it
 
 // Auth middleware to extract userId from JWT
 const authMiddleware = (req, res, next) => {
@@ -10,8 +9,11 @@ const authMiddleware = (req, res, next) => {
     }
 
     try {
-        // Replace 'process.env.JWT_SECRET' with the actual JWT secret from your environment
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const JWT_SECRET = process.env.JWT_SECRET;  // Get JWT secret from environment (make sure .env is loaded)
+
+        // Ensure that 'HS256' is the correct algorithm used for signing tokens
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }); 
+
         req.userId = decoded.id;  // Set userId from the token payload
 
         next();  // Continue to the next middleware or route handler

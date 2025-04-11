@@ -542,106 +542,74 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction');
 const authMiddleware = require('../middleware/authMiddleware'); 
 
-dotenv.config();
+require('dotenv').config(); // Ensure dotenv is loaded at the top of the file
 
 const router = express.Router();
 
+// Environment variables should be validated before use
 const {
     MERCHANT_ACCOUNT_NUMBER,
     MERCHANT_NAME,
     CALLBACK_URL,
+    API_KEY,
+    MERCHANT_CODE,
+    CONSUMER_SECRET
 } = process.env;
 
-const API_KEY =
-  "Y5e2cRT3sQ/4iQg+TO69mY3CZ9QMNM2n8vzKHAsbvNdl9zXYCBItLGcHECjXhrjmxJLp+0pJCNnck8+abpw2RA==";
-const MERCHANT_CODE =
-  "5685692761";
-const CONSUMER_SECRET =
-  "9neJ1NL36uN4MGU3fOt4pv834haTCp";
+if (!MERCHANT_ACCOUNT_NUMBER || !MERCHANT_NAME || !CALLBACK_URL || !API_KEY || !MERCHANT_CODE || !CONSUMER_SECRET) {
+    console.error("Missing environment variables");
+    process.exit(1); // Terminate process if essential environment variables are missing
+}
 
-// Import generateSignature function (only once)
-const { generateSignature } = require("./signature"); 
+const { generateSignature } = require("./signature");
 
-// Test Route for Signature Generation (Unused now, but kept here for reference)
+// Ensure all functions are async for proper flow of execution
+
+// Endpoint to generate signature for testing
 router.post('/generate-test-signature', async (req, res) => {
     try {
-        const {
-            rawText,
-            privateKeyString
-        } = req.body;
+        const { rawText, privateKeyString } = req.body;
         if (!rawText || !privateKeyString) {
             return res.status(400).json({
                 message: "Missing rawText or privateKeyString"
             });
         }
 
-        const generatedSignature = await generateSignature(rawText); // Use generateSignature directly
+        const generatedSignature = await generateSignature(rawText); 
         console.log("Generated Signature:", generatedSignature);
 
-        res.status(200).json({
-            signature: generatedSignature
-        });
+        res.status(200).json({ signature: generatedSignature });
     } catch (error) {
         console.error("Error generating signature:", error);
-        res.status(500).json({
-            message: "Error generating signature",
-            error: error.message
-        });
+        res.status(500).json({ message: "Error generating signature", error: error.message });
     }
 });
 
-
+// Route to handle fetching the access token
 router.get('/access-token', async (req, res) => {
     try {
-        const token = await getAccessToken();  // Ensure this function is calling refresh if expired
+        const token = await getAccessToken();
         res.status(200).json({ accessToken: token });
     } catch (error) {
         res.status(500).json({ error: 'Error generating access token', message: error.message });
     }
 });
 
-// async function getAccessToken() {
-//     try {
-//         const response = await axios.post(
-//             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
-//             {
-//                 merchantCode: MERCHANT_CODE,
-//                 consumerSecret: CONSUMER_SECRET
-//             },
-//             {
-//                 headers: {
-//                     "Content-Type": "application/json",
-//                     "Api-Key": API_KEY
-//                 }
-//             }
-//         );
-//         console.log("Access Token:", response.data.accessToken);
-//         return response.data.accessToken;
-//     } catch (error) {
-//         console.error("Error getting access token:", error.response ? error.response.data : error.message);
-//         throw new Error(`Error getting access token: ${error.message}`);
-//     }
-// }
-
 let accessToken = null;
-let expirationTime = null; // Store expiration time (in milliseconds)
-let refreshToken = null;  // You may need to get this from your authentication response
+let expirationTime = null;
+let refreshToken = null;
 
 async function refreshAccessToken() {
     try {
         const response = await axios.post(
-            "https://uat.finserve.africa/authentication/api/v3/refresh",  // Assuming this is the refresh endpoint
-            { refreshToken }, // Pass the refresh token to get a new access token
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Api-Key": API_KEY
-                }
-            }
+            "https://uat.finserve.africa/authentication/api/v3/refresh", 
+            { refreshToken },
+            { headers: { "Content-Type": "application/json", "Api-Key": API_KEY } }
         );
+        
         accessToken = response.data.accessToken;
-        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Set expiration to 1 hour from now
-        refreshToken = response.data.refreshToken; // Assuming the response also returns a refresh token
+        expirationTime = new Date().getTime() + 60 * 60 * 1000;
+        refreshToken = response.data.refreshToken;
         console.log("Access Token Refreshed:", accessToken);
         return accessToken;
     } catch (error) {
@@ -651,7 +619,6 @@ async function refreshAccessToken() {
 }
 
 async function getAccessToken() {
-    // If the access token is invalid or expired, refresh it
     if (!accessToken || new Date().getTime() > expirationTime) {
         if (refreshToken) {
             console.log("Access token expired, refreshing...");
@@ -668,20 +635,13 @@ async function generateNewAccessToken() {
     try {
         const response = await axios.post(
             "https://uat.finserve.africa/authentication/api/v3/authenticate/merchant",
-            {
-                merchantCode: MERCHANT_CODE,
-                consumerSecret: CONSUMER_SECRET
-            },
-            {
-                headers: {
-                    "Content-Type": "application/json",
-                    "Api-Key": API_KEY
-                }
-            }
+            { merchantCode: MERCHANT_CODE, consumerSecret: CONSUMER_SECRET },
+            { headers: { "Content-Type": "application/json", "Api-Key": API_KEY } }
         );
+        
         accessToken = response.data.accessToken;
-        refreshToken = response.data.refreshToken; // Save the refresh token for future use
-        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Assuming 1 hour expiration time
+        refreshToken = response.data.refreshToken;
+        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Set expiration to 1 hour
         console.log("New Access Token:", accessToken);
         return accessToken;
     } catch (error) {
@@ -690,51 +650,17 @@ async function generateNewAccessToken() {
     }
 }
 
-// Example usage: Use this function to automatically get or refresh the access token
-async function callApi() {
-    try {
-        const token = await getAccessToken();
-        // Now you can use this token to make other API calls
-        console.log("Using Access Token:", token);
-    } catch (error) {
-        console.error("Error in API call:", error.message);
-    }
-}
-
-// Call the API and ensure token is refreshed/valid
-callApi();
-
-
-// Function to generate a random alphanumeric string of a given length
-function generateRandomAlphanumeric(length = 8) {
-    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    let result = '';
-    const charactersLength = characters.length;
-    for (let i = 0; i < length; i++) {
-        result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-    return result;
-}
-
+// Signature generation function example
 async function performSTKPush({ phoneNumber, accountReference }) {
     try {
-        // Fixed amount as per your requirement
         const amount = 5.00;
-
-        // Prepare raw text for signature (concatenation)
         const rawText = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
+        const generatedSignature = await generateSignature(rawText);
 
-        // Generate the signature
-        const generatedSignature = await generateSignature(rawText); // Await here to get the signature
-
-        // Get the access token (it will auto-refresh if expired)
         const accessToken = await getAccessToken();
+        const currentDate = new Date().toISOString().split('T')[0]; // Current date in YYYY-MM-DD format
 
-        // Get the current date in the required format (YYYY-MM-DD)
-        const currentDate = new Date().toISOString().split('T')[0];
-
-        // Make the STK Push API call with hardcoded values
-        const stkPushResponseFromAPI = await axios.post(
+        const stkPushResponse = await axios.post(
             'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
             {
                 merchant: {
@@ -743,136 +669,60 @@ async function performSTKPush({ phoneNumber, accountReference }) {
                     name: MERCHANT_NAME
                 },
                 payment: {
-                    ref: accountReference,  // Unique account reference
+                    ref: accountReference,
                     amount: amount.toString(),
-                    currency: 'KES',  // Currency is hardcoded
-                    telco: 'Safaricom',  // Telco is hardcoded
-                    mobileNumber: phoneNumber,  // Dynamic phone number
-                    date: currentDate,  // Current date
-                    callBackUrl: CALLBACK_URL,  // Callback URL is hardcoded
-                    pushType: "USSD"  // Push type is hardcoded
+                    currency: 'KES',
+                    telco: 'Safaricom',
+                    mobileNumber: phoneNumber,
+                    date: currentDate,
+                    callBackUrl: CALLBACK_URL,
+                    pushType: "USSD"
                 }
             },
             {
                 headers: {
-                    Authorization: `Bearer ${accessToken}`, // Use the dynamic access token here
+                    Authorization: `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
-                    'Signature': generatedSignature  // Use the generated signature
+                    'Signature': generatedSignature
                 },
                 timeout: 15000
             }
         );
 
-        return stkPushResponseFromAPI.data;
+        return stkPushResponse.data;
     } catch (error) {
-        console.error("STK Push Error:", error.response ? error.response.data : error.message);
-        throw new Error(`Error performing STK Push: ${error.message}`);
+        console.error("Error in STK push:", error.response ? error.response.data : error.message);
+        throw new Error("STK Push failed: " + error.message);
     }
 }
 
-
-// // STK Push Route
-// router.post('/stk-push', async (req, res) => {
-//     try {
-//         // Destructure only the mobileNumber from the request body
-//         const { mobileNumber } = req.body;
-
-//         // Validate that the mobile number is present
-//         if (!mobileNumber) {
-//             return res.status(400).json({ message: "Mobile number is required" });
-//         }
-
-//         // Fixed amount of 5.00 (as per your request)
-//         const amount = 5.00;
-
-//         // Generate a unique account reference using a random alphanumeric string
-//         const reference = generateRandomAlphanumeric(8);  // Generates an alphanumeric reference (8 characters)
-
-//         // Default values for other fields (since they're constant)
-//         const currency = 'KES';
-//         const telco = 'Safaricom';
-//         const merchantName = MERCHANT_NAME;
-//         const merchantAccountNumber = MERCHANT_ACCOUNT_NUMBER;
-
-//         // Create a new transaction
-//         const transaction = new Transaction({
-//             userId: req.userId,  // Replace with actual user ID
-//             amount,
-//             currency,
-//             telco,
-//             mobileNumber,
-//             reference,
-//             merchantName,
-//             merchantAccountNumber,
-//             status: "pending"
-//         });
-
-//         // Save the transaction to the database
-//         await transaction.save();
-
-//         // Proceed with the STK Push or any other logic
-//         const pushResponse = await performSTKPush({
-//             phoneNumber: mobileNumber,
-//             accountReference: reference
-//         });
-
-//         res.status(200).json(pushResponse);
-//     } catch (error) {
-//         console.error("Error initiating STK push:", error);
-//         res.status(500).json({ error: error.message });
-//     }
-// });
-
-// STK Push Route
+// Route to handle the STK push
 router.post('/stk-push', authMiddleware, async (req, res) => {
     try {
-        // Destructure only the mobileNumber from the request body
         const { mobileNumber } = req.body;
 
-        // Validate that the mobile number is present
         if (!mobileNumber) {
             return res.status(400).json({ message: "Mobile number is required" });
         }
 
-        // Ensure userId is provided
-        const userId = req.userId;  // Assuming the userId is extracted from JWT or session
-        if (!userId) {
-            return res.status(400).json({ message: "User ID is required" });
-        }
-
-        // Fixed amount of 5.00 (as per your request)
+        const reference = generateRandomAlphanumeric(8);
         const amount = 5.00;
 
-        // Generate a unique account reference using a random alphanumeric string
-        const reference = generateRandomAlphanumeric(8);  // Generates an alphanumeric reference (8 characters)
-
-        // Default values for other fields (since they're constant)
-        const currency = 'KES';
-        const telco = 'Safaricom';
-        const merchantName = MERCHANT_NAME;
-        const merchantAccountNumber = MERCHANT_ACCOUNT_NUMBER;
-
-        // Create a new transaction
         const transaction = new Transaction({
-            userId,  // Ensure userId is set properly
+            userId: req.userId, 
             amount,
-            currency,
-            telco,
+            currency: 'KES',
+            telco: 'Safaricom',
             mobileNumber,
             reference,
-            merchantName,
-            merchantAccountNumber,
+            merchantName: MERCHANT_NAME,
+            merchantAccountNumber: MERCHANT_ACCOUNT_NUMBER,
             status: "pending"
         });
 
-        // Save the transaction to the database
         await transaction.save();
 
-        // Proceed with the STK Push or any other logic
-        const pushResponse = await performSTKPush({
-            phoneNumber: mobileNumber,
-            accountReference: reference
-        });
+        const pushResponse = await performSTKPush({ phoneNumber: mobileNumber, accountReference: reference });
 
         res.status(200).json(pushResponse);
     } catch (error) {
@@ -881,13 +731,10 @@ router.post('/stk-push', authMiddleware, async (req, res) => {
     }
 });
 
-
-// Route to get User Details by mobile number
+// Route for user details by mobile number
 router.get('/user-details/:mobileNumber', async (req, res) => {
-    const { mobileNumber } = req.params;
-
     try {
-        const user = await User.findOne({ mobileNumber });
+        const user = await User.findOne({ mobileNumber: req.params.mobileNumber });
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
@@ -898,12 +745,10 @@ router.get('/user-details/:mobileNumber', async (req, res) => {
     }
 });
 
-// Route to get Transaction Details by user ID or reference
+// Route for transaction details
 router.get('/transaction-details/:reference', async (req, res) => {
-    const { reference } = req.params;
-
     try {
-        const transaction = await Transaction.findOne({ reference });
+        const transaction = await Transaction.findOne({ reference: req.params.reference });
         if (!transaction) {
             return res.status(404).json({ message: 'Transaction not found' });
         }
@@ -914,42 +759,33 @@ router.get('/transaction-details/:reference', async (req, res) => {
     }
 });
 
-// Callback route to handle the payment response and update the user subscription
+// Payment callback route for payment status updates
 router.post('/payment-callback', async (req, res) => {
-    const { mobileNumber } = req.body; // Only mobileNumber will be passed in the callback
+    const { mobileNumber } = req.body;
 
     try {
-        // Search for a transaction based on mobileNumber and the status
         const transaction = await Transaction.findOne({ mobileNumber, status: { $in: ['pending', 'completed'] } });
 
-        // If no transaction is found, return an error
         if (!transaction) {
             return res.status(404).json({ message: 'Transaction not found for this mobile number' });
         }
 
-        // You can check if the transaction is pending or completed and handle it accordingly
         if (transaction.status === 'pending') {
-            // Update the transaction status to 'completed'
             transaction.status = 'completed';
-            transaction.transactionId = 'GeneratedTransactionId'; // Assuming this is generated in your payment system
-            transaction.telcoReference = 'GeneratedTelcoReference'; // Generated reference (if applicable)
-            transaction.amount = transaction.amount; // Amount from the transaction
-            transaction.charge = 1; // This charge can be static or calculated dynamically based on your system
+            transaction.transactionId = 'GeneratedTransactionId'; 
+            transaction.telcoReference = 'GeneratedTelcoReference';
             await transaction.save();
         }
 
-        // Fetch the user based on mobileNumber (assuming each mobile number is linked to a unique user)
-        const user = await User.findOne({ mobileNumber }); // Assuming `mobileNumber` exists in the User schema
+        const user = await User.findOne({ mobileNumber });
         if (!user) {
-            return res.status(404).json({ message: 'User not found for this mobile number' });
+            return res.status(404).json({ message: 'User not found' });
         }
 
-        // Update the user's subscription status
-        user.hasSubscribed = true; // User is now subscribed
+        user.hasSubscribed = true;
         await user.save();
 
-        // Return success response
-        return res.status(200).json({
+        res.status(200).json({
             message: 'Transaction successful and user subscription updated',
             status: 'Payment successful',
             mobileNumber,
@@ -958,13 +794,10 @@ router.post('/payment-callback', async (req, res) => {
         });
     } catch (error) {
         console.error('Payment Callback Error:', error);
-        return res.status(500).json({
-            message: 'An error occurred during the payment callback',
-            error: error.message
-        });
+        res.status(500).json({ message: 'An error occurred during the payment callback', error: error.message });
     }
 });
 
-
 module.exports = router;
+
 
