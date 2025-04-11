@@ -540,6 +540,7 @@ const dotenv = require('dotenv');
 const crypto = require('crypto');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
+const authMiddleware = require('../middleware/authMiddleware'); 
 
 dotenv.config();
 
@@ -770,8 +771,60 @@ async function performSTKPush({ phoneNumber, accountReference }) {
 }
 
 
+// // STK Push Route
+// router.post('/stk-push', async (req, res) => {
+//     try {
+//         // Destructure only the mobileNumber from the request body
+//         const { mobileNumber } = req.body;
+
+//         // Validate that the mobile number is present
+//         if (!mobileNumber) {
+//             return res.status(400).json({ message: "Mobile number is required" });
+//         }
+
+//         // Fixed amount of 5.00 (as per your request)
+//         const amount = 5.00;
+
+//         // Generate a unique account reference using a random alphanumeric string
+//         const reference = generateRandomAlphanumeric(8);  // Generates an alphanumeric reference (8 characters)
+
+//         // Default values for other fields (since they're constant)
+//         const currency = 'KES';
+//         const telco = 'Safaricom';
+//         const merchantName = MERCHANT_NAME;
+//         const merchantAccountNumber = MERCHANT_ACCOUNT_NUMBER;
+
+//         // Create a new transaction
+//         const transaction = new Transaction({
+//             userId: req.userId,  // Replace with actual user ID
+//             amount,
+//             currency,
+//             telco,
+//             mobileNumber,
+//             reference,
+//             merchantName,
+//             merchantAccountNumber,
+//             status: "pending"
+//         });
+
+//         // Save the transaction to the database
+//         await transaction.save();
+
+//         // Proceed with the STK Push or any other logic
+//         const pushResponse = await performSTKPush({
+//             phoneNumber: mobileNumber,
+//             accountReference: reference
+//         });
+
+//         res.status(200).json(pushResponse);
+//     } catch (error) {
+//         console.error("Error initiating STK push:", error);
+//         res.status(500).json({ error: error.message });
+//     }
+// });
+
 // STK Push Route
-router.post('/stk-push', async (req, res) => {
+router.post('/stk-push', authMiddleware, async (req, res) => {
     try {
         // Destructure only the mobileNumber from the request body
         const { mobileNumber } = req.body;
@@ -779,6 +832,12 @@ router.post('/stk-push', async (req, res) => {
         // Validate that the mobile number is present
         if (!mobileNumber) {
             return res.status(400).json({ message: "Mobile number is required" });
+        }
+
+        // Ensure userId is provided
+        const userId = req.userId;  // Assuming the userId is extracted from JWT or session
+        if (!userId) {
+            return res.status(400).json({ message: "User ID is required" });
         }
 
         // Fixed amount of 5.00 (as per your request)
@@ -795,7 +854,7 @@ router.post('/stk-push', async (req, res) => {
 
         // Create a new transaction
         const transaction = new Transaction({
-            userId: req.userId,  // Replace with actual user ID
+            userId,  // Ensure userId is set properly
             amount,
             currency,
             telco,
@@ -821,6 +880,7 @@ router.post('/stk-push', async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+
 
 // Route to get User Details by mobile number
 router.get('/user-details/:mobileNumber', async (req, res) => {
