@@ -540,13 +540,13 @@ const dotenv = require('dotenv');
 const crypto = require('crypto');
 const User = require('../models/User');
 const Transaction = require('../models/Transaction');
-const authMiddleware = require('../middleware/authMiddleware'); 
+const authMiddleware = require('../middleware/authMiddleware');
 
-require('dotenv').config(); // Ensure dotenv is loaded at the top of the file
+require('dotenv').config(); // Load env vars
 
 const router = express.Router();
 
-// Environment variables should be validated before use
+// Load and validate environment variables
 const {
     MERCHANT_ACCOUNT_NUMBER,
     MERCHANT_NAME,
@@ -557,79 +557,42 @@ const {
 } = process.env;
 
 if (!MERCHANT_ACCOUNT_NUMBER || !MERCHANT_NAME || !CALLBACK_URL || !API_KEY || !MERCHANT_CODE || !CONSUMER_SECRET) {
-    console.error("Missing environment variables");
-    process.exit(1); // Terminate process if essential environment variables are missing
+    console.error("❌ Missing required environment variables");
+    process.exit(1);
 }
 
 const { generateSignature } = require("./signature");
 
-// Ensure all functions are async for proper flow of execution
+// 🔧 Utility: Generate random alphanumeric reference
+function generateRandomAlphanumeric(length) {
+    return crypto.randomBytes(length)
+        .toString('base64')
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .substring(0, length);
+}
 
-// Endpoint to generate signature for testing
+// Endpoint to test signature generation
 router.post('/generate-test-signature', async (req, res) => {
     try {
         const { rawText, privateKeyString } = req.body;
         if (!rawText || !privateKeyString) {
-            return res.status(400).json({
-                message: "Missing rawText or privateKeyString"
-            });
+            return res.status(400).json({ message: "Missing rawText or privateKeyString" });
         }
 
-        const generatedSignature = await generateSignature(rawText); 
-        console.log("Generated Signature:", generatedSignature);
+        const generatedSignature = await generateSignature(rawText);
+        console.log("✅ Generated Signature:", generatedSignature);
 
         res.status(200).json({ signature: generatedSignature });
     } catch (error) {
-        console.error("Error generating signature:", error);
+        console.error("❌ Error generating signature:", error);
         res.status(500).json({ message: "Error generating signature", error: error.message });
     }
 });
 
-// Route to handle fetching the access token
-router.get('/access-token', async (req, res) => {
-    try {
-        const token = await getAccessToken();
-        res.status(200).json({ accessToken: token });
-    } catch (error) {
-        res.status(500).json({ error: 'Error generating access token', message: error.message });
-    }
-});
-
+// Access token management
 let accessToken = null;
-let expirationTime = null;
 let refreshToken = null;
-
-async function refreshAccessToken() {
-    try {
-        const response = await axios.post(
-            "https://uat.finserve.africa/authentication/api/v3/refresh", 
-            { refreshToken },
-            { headers: { "Content-Type": "application/json", "Api-Key": API_KEY } }
-        );
-        
-        accessToken = response.data.accessToken;
-        expirationTime = new Date().getTime() + 60 * 60 * 1000;
-        refreshToken = response.data.refreshToken;
-        console.log("Access Token Refreshed:", accessToken);
-        return accessToken;
-    } catch (error) {
-        console.error("Error refreshing access token:", error.response ? error.response.data : error.message);
-        throw new Error("Error refreshing access token");
-    }
-}
-
-async function getAccessToken() {
-    if (!accessToken || new Date().getTime() > expirationTime) {
-        if (refreshToken) {
-            console.log("Access token expired, refreshing...");
-            return await refreshAccessToken();
-        } else {
-            console.log("No refresh token available, generating a new access token...");
-            return await generateNewAccessToken();
-        }
-    }
-    return accessToken;
-}
+let expirationTime = null;
 
 async function generateNewAccessToken() {
     try {
@@ -638,29 +601,56 @@ async function generateNewAccessToken() {
             { merchantCode: MERCHANT_CODE, consumerSecret: CONSUMER_SECRET },
             { headers: { "Content-Type": "application/json", "Api-Key": API_KEY } }
         );
-        
+
         accessToken = response.data.accessToken;
         refreshToken = response.data.refreshToken;
-        expirationTime = new Date().getTime() + (60 * 60 * 1000); // Set expiration to 1 hour
-        console.log("New Access Token:", accessToken);
+        expirationTime = Date.now() + 60 * 60 * 1000; // 1 hour
+
+        console.log("🔐 New Access Token:", accessToken);
         return accessToken;
     } catch (error) {
-        console.error("Error generating new access token:", error.response ? error.response.data : error.message);
-        throw new Error("Error generating new access token");
+        console.error("❌ Error generating access token:", error.response?.data || error.message);
+        throw new Error("Failed to generate new access token");
     }
 }
 
-// Signature generation function example
+async function refreshAccessToken() {
+    try {
+        const response = await axios.post(
+            "https://uat.finserve.africa/authentication/api/v3/refresh",
+            { refreshToken },
+            { headers: { "Content-Type": "application/json", "Api-Key": API_KEY } }
+        );
+
+        accessToken = response.data.accessToken;
+        refreshToken = response.data.refreshToken;
+        expirationTime = Date.now() + 60 * 60 * 1000;
+
+        console.log("🔁 Refreshed Access Token:", accessToken);
+        return accessToken;
+    } catch (error) {
+        console.error("❌ Error refreshing access token:", error.response?.data || error.message);
+        throw new Error("Failed to refresh access token");
+    }
+}
+
+async function getAccessToken() {
+    if (!accessToken || Date.now() > expirationTime) {
+        return refreshToken ? await refreshAccessToken() : await generateNewAccessToken();
+    }
+    return accessToken;
+}
+
+// 🔁 Initiate STK Push
 async function performSTKPush({ phoneNumber, accountReference }) {
     try {
         const amount = 5.00;
         const rawText = `${MERCHANT_ACCOUNT_NUMBER}${accountReference}${phoneNumber}Safaricom${amount}KES`;
         const generatedSignature = await generateSignature(rawText);
+        const token = await getAccessToken();
+        const currentDate = new Date().toISOString().split('T')[0];
 
-        const accessToken = await getAccessToken();
-        const currentDate = new Date().toISOString().split('T')[0]; // Current date in YYYY-MM-DD format
-
-        const stkPushResponse = await axios.post(
+        const response = await axios.post(
             'https://uat.finserve.africa/v3-apis/payment-api/v3.0/stkussdpush/initiate',
             {
                 merchant: {
@@ -681,35 +671,32 @@ async function performSTKPush({ phoneNumber, accountReference }) {
             },
             {
                 headers: {
-                    Authorization: `Bearer ${accessToken}`,
+                    Authorization: `Bearer ${token}`,
                     'Content-Type': 'application/json',
-                    'Signature': generatedSignature
+                    Signature: generatedSignature
                 },
                 timeout: 15000
             }
         );
 
-        return stkPushResponse.data;
+        return response.data;
     } catch (error) {
-        console.error("Error in STK push:", error.response ? error.response.data : error.message);
-        throw new Error("STK Push failed: " + error.message);
+        console.error("❌ STK Push Error:", error.response?.data || error.message);
+        throw new Error("STK Push failed: " + (error.response?.data?.message || error.message));
     }
 }
 
-// Route to handle the STK push
+// 💸 Route: STK Push
 router.post('/stk-push', authMiddleware, async (req, res) => {
     try {
         const { mobileNumber } = req.body;
-
-        if (!mobileNumber) {
-            return res.status(400).json({ message: "Mobile number is required" });
-        }
+        if (!mobileNumber) return res.status(400).json({ message: "Mobile number is required" });
 
         const reference = generateRandomAlphanumeric(8);
         const amount = 5.00;
 
         const transaction = new Transaction({
-            userId: req.userId, 
+            userId: req.userId,
             amount,
             currency: 'KES',
             telco: 'Safaricom',
@@ -721,45 +708,42 @@ router.post('/stk-push', authMiddleware, async (req, res) => {
         });
 
         await transaction.save();
-
         const pushResponse = await performSTKPush({ phoneNumber: mobileNumber, accountReference: reference });
 
         res.status(200).json(pushResponse);
     } catch (error) {
-        console.error("Error initiating STK push:", error);
+        console.error("❌ Error initiating STK push:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Route for user details by mobile number
+// 👤 Route: Get user details
 router.get('/user-details/:mobileNumber', async (req, res) => {
     try {
         const user = await User.findOne({ mobileNumber: req.params.mobileNumber });
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
         res.status(200).json(user);
     } catch (error) {
-        console.error('Error fetching user details:', error);
+        console.error('❌ Error fetching user details:', error);
         res.status(500).json({ message: 'Error fetching user details', error: error.message });
     }
 });
 
-// Route for transaction details
+// 💳 Route: Get transaction details
 router.get('/transaction-details/:reference', async (req, res) => {
     try {
         const transaction = await Transaction.findOne({ reference: req.params.reference });
-        if (!transaction) {
-            return res.status(404).json({ message: 'Transaction not found' });
-        }
+        if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+
         res.status(200).json(transaction);
     } catch (error) {
-        console.error('Error fetching transaction details:', error);
+        console.error('❌ Error fetching transaction details:', error);
         res.status(500).json({ message: 'Error fetching transaction details', error: error.message });
     }
 });
 
-// Payment callback route for payment status updates
+// 🔁 Callback route from payment provider
 router.post('/payment-callback', async (req, res) => {
     const { mobileNumber } = req.body;
 
@@ -772,15 +756,13 @@ router.post('/payment-callback', async (req, res) => {
 
         if (transaction.status === 'pending') {
             transaction.status = 'completed';
-            transaction.transactionId = 'GeneratedTransactionId'; 
+            transaction.transactionId = 'GeneratedTransactionId';
             transaction.telcoReference = 'GeneratedTelcoReference';
             await transaction.save();
         }
 
         const user = await User.findOne({ mobileNumber });
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
+        if (!user) return res.status(404).json({ message: 'User not found' });
 
         user.hasSubscribed = true;
         await user.save();
@@ -793,11 +775,10 @@ router.post('/payment-callback', async (req, res) => {
             charge: 1
         });
     } catch (error) {
-        console.error('Payment Callback Error:', error);
+        console.error('❌ Payment Callback Error:', error);
         res.status(500).json({ message: 'An error occurred during the payment callback', error: error.message });
     }
 });
 
 module.exports = router;
-
 
